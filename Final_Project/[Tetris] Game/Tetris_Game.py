@@ -49,10 +49,7 @@ class Tetris:
         self.debug_message = False # 除錯訊息.
         self.score_max = 0 # 最大連線數.
         self.score = 0 # 本場連線數.
-        # 遊戲狀態.
-        # 0:遊戲進行中.
-        # 1:清除磚塊.
-        self.game_mode = 0
+   
 
     #-------------------------------------------------------------------------
     #? 函數:取得磚塊索引陣列.
@@ -73,9 +70,17 @@ class Tetris:
 
         test = 200-sum(h)
         return test
+    def bumpness(self, a): 
+        test = 0
+        h = [19, 19, 19, 19, 19, 19, 19, 19, 19, 19]
+        for i in a:
+            if (i[1] < h[i[0]]):
+                h[i[0]] = i[1]
+        for i in range(1,10):
+            test += abs(h[i]-h[i-1])
+        return test
 
     # 最大高度
-
 
     def max_height(self, a):
         test = 3000
@@ -158,12 +163,12 @@ class Tetris:
                     ans[j][1] += 1
         l = self.column_row_transition_and_wells(ans)
         score = 0
-        score -= (9.348695305445199)*l[0]
-        score -= (3.2178882868487753)*l[1]
-        score += (-3.3855972247263626)*l[2]
-        score -= (7.899265427351652)*self.holes(ans)
-        score += 3.4181268101392694*len(move1[0])
-        score -= (self.max_height(ans))*(4.500158825082766)
+        score -= (9.348695305)*l[0]
+        score -= (3.217888287)*l[1]
+        score += (-3.385597225)*l[2]
+        score -= (7.899265427)*self.holes(ans)
+        score += 3.41812681*len(move1[0])
+        score -= (self.max_height(ans))*(4.500158825)
         return score
 
     def transform_to_list(self):
@@ -174,7 +179,7 @@ class Tetris:
                     board_list.append((x,y))
         return board_list
     # 計算出最佳的版面，回傳動作至LabView
-    def pythontakeall(self, block_type):
+    def pythontakeall(self, block_type,x,block_state):
         set_board = set()
         board = self.transform_to_list()
         for i in range(len(board)):
@@ -201,8 +206,16 @@ class Tetris:
                     score[i] = self.grading(a)
                 block[:, 0] = block[:, 0]+1 #block的 x 值+1: move right
             index = score.index(max(score))
+            action = score[x]
+            score.sort(reverse=True)
+            rank = 1
+            for i in range(len(score)):
+                if score[i] == action:
+                    break
+                else:
+                    rank += 1
             # 找出最大值，回傳對應動作
-            return [max(score), 0, index-3]
+            return [max(score), 0, index-3, rank]
         elif block_type == 7:
             score0 = [0, 0, 0, 0, 0, 0, 0] #70
             score1 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] #71
@@ -231,11 +244,22 @@ class Tetris:
             totalscore = score0 + score1
 
             index = totalscore.index(max(totalscore))
+            if block_state == 0:
+                action = totalscore[x]
+            else:
+                action = totalscore[8+x]
+            totalscore.sort(reverse=True)
+            rank = 1
+            for i in range(len(totalscore)):
+                if totalscore[i] == action:
+                    break
+                else:
+                    rank += 1
 
             if index < 7:
-                return [max(totalscore), 0, index-3]
+                return [max(totalscore), 0, index-3, rank]
             else:
-                return [max(totalscore), 1, index-7-4]
+                return [max(totalscore), 1, index-7-4, rank]
         elif block_type == 1:
             score0 = [0, 0, 0, 0, 0, 0, 0, 0, 0] #10
             score1 = [0, 0, 0, 0, 0, 0, 0, 0] #11
@@ -262,12 +286,19 @@ class Tetris:
                     score1[i] = self.grading(a)
                 block[:, 0] = block[:, 0]+1
             totalscore = score0+score1
-
             index = totalscore.index(max(totalscore))
+            action = totalscore[block_state*9+x]
+            totalscore.sort(reverse=True)
+            rank = 1
+            for i in range(len(totalscore)):
+                if totalscore[i] == action:
+                    break
+                else:
+                    rank += 1
             if index < 9:
-                return [max(totalscore), 0, index-3]
+                return [max(totalscore), 0, index-3, rank]
             else:
-                return [max(totalscore), 1, index-9-3]
+                return [max(totalscore), 1, index-9-3, rank]
         elif block_type == 2:
             score0 = [0, 0, 0, 0, 0, 0, 0, 0, 0]
             score1 = [0, 0, 0, 0, 0, 0, 0, 0]
@@ -296,10 +327,18 @@ class Tetris:
             totalscore = score0+score1
 
             index = totalscore.index(max(totalscore))
+            action = totalscore[block_state*9+x]
+            totalscore.sort(reverse=True)
+            rank = 1
+            for i in range(len(totalscore)):
+                if totalscore[i] == action:
+                    break
+                else:
+                    rank += 1
             if index < 9:
-                return [max(totalscore), 0, index-3]
+                return [max(totalscore), 0, index-3, rank]
             else:
-                return [max(totalscore), 1, index-9-3]
+                return [max(totalscore), 1, index-9-3, rank]
         elif block_type == 3:
             score0 = [0, 0, 0, 0, 0, 0, 0, 0]
             score1 = [0, 0, 0, 0, 0, 0, 0, 0, 0]
@@ -355,14 +394,29 @@ class Tetris:
 
             totalscore = score0+score1+score2+score3
             index = totalscore.index(max(totalscore))
-            if index < 8:
-                return [max(totalscore), 0, index-3]
-            elif index < 17:
-                return [max(totalscore), 1, index-8-3]
-            elif index < 25:
-                return [max(totalscore), 2, index-17-3]
+            if(block_state == 0):
+                action = totalscore[x]
+            elif(block_state == 1):
+                action = totalscore[8+x]
+            elif(block_state == 2):
+                action = totalscore[17+x]
             else:
-                return [max(totalscore), 3, index-25-3]
+                action = totalscore[25+x]
+            totalscore.sort(reverse=True)
+            rank = 1
+            for i in range(len(totalscore)):
+                if totalscore[i] == action:
+                    break
+                else:
+                    rank += 1
+            if index < 8:
+                return [max(totalscore), 0, index-3, rank]
+            elif index < 17:
+                return [max(totalscore), 1, index-8-3, rank]
+            elif index < 25:
+                return [max(totalscore), 2, index-17-3, rank]
+            else:
+                return [max(totalscore), 3, index-25-3, rank]
         elif block_type == 4:
             score0 = [0, 0, 0, 0, 0, 0, 0, 0]
             score1 = [0, 0, 0, 0, 0, 0, 0, 0, 0]
@@ -418,14 +472,29 @@ class Tetris:
 
             totalscore = score0+score1+score2+score3
             index = totalscore.index(max(totalscore))
-            if index < 8:
-                return [max(totalscore), 0, index-3]
-            elif index < 17:
-                return [max(totalscore), 1, index-8-3]
-            elif index < 25:
-                return [max(totalscore), 2, index-17-3]
+            if(block_state == 0):
+                action = totalscore[x]
+            elif(block_state == 1):
+                action = totalscore[8+x]
+            elif(block_state == 2):
+                action = totalscore[17+x]
             else:
-                return [max(totalscore), 3, index-25-3]
+                action = totalscore[25+x]
+            totalscore.sort(reverse=True)
+            rank = 1
+            for i in range(len(totalscore)):
+                if totalscore[i] == action:
+                    break
+                else:
+                    rank += 1
+            if index < 8:
+                return [max(totalscore), 0, index-3, rank]
+            elif index < 17:
+                return [max(totalscore), 1, index-8-3, rank]
+            elif index < 25:
+                return [max(totalscore), 2, index-17-3, rank]
+            else:
+                return [max(totalscore), 3, index-25-3, rank]
         elif block_type == 5:
             score0 = [0, 0, 0, 0, 0, 0, 0, 0]
             score1 = [0, 0, 0, 0, 0, 0, 0, 0, 0]
@@ -481,20 +550,35 @@ class Tetris:
 
             totalscore = score0+score1+score2+score3
             index = totalscore.index(max(totalscore))
-            if index < 8:
-                return [max(totalscore), 0, index-3]
-            elif index < 17:
-                return [max(totalscore), 1, index-8-3]
-            elif index < 25:
-                return [max(totalscore), 2, index-17-3]
+            if(block_state == 0):
+                action = totalscore[x]
+            elif(block_state == 1):
+                action = totalscore[8+x]
+            elif(block_state == 2):
+                action = totalscore[17+x]
             else:
-                return [max(totalscore), 3, index-25-3]
+                action = totalscore[25+x]
+            totalscore.sort(reverse=True)
+            rank = 1
+            for i in range(len(totalscore)):
+                if totalscore[i] == action:
+                    break
+                else:
+                    rank += 1
+            if index < 8:
+                return [max(totalscore), 0, index-3, rank]
+            elif index < 17:
+                return [max(totalscore), 1, index-8-3, rank]
+            elif index < 25:
+                return [max(totalscore), 2, index-17-3, rank]
+            else:
+                return [max(totalscore), 3, index-25-3, rank]
 
     # 實作暫存功能，比較暫存區的方塊與當前方塊，回傳動作至labview
-    def newrobot(self):
-        original = self.pythontakeall(self.brick_id)
+    def newrobot(self, x, block_type):
+        original = self.pythontakeall(self.brick_id,x,block_type)
         if(self.brick_saved_id != 0):
-            saved = self.pythontakeall(self.brick_saved_id)
+            saved = self.pythontakeall(self.brick_saved_id,x,block_type)
         else:
             return original
         
@@ -551,7 +635,6 @@ class Tetris:
     #-------------------------------------------------------------------------
     #? 複製方塊到容器內.
     def copyToBricksArray(self):
-        
         posX = 0
         posY = 0
         for x in range(4):
@@ -587,13 +670,13 @@ class Tetris:
         self.score = 0
     #-------------------------------------------------------------------------
     def faster(self):
-        if(self.BRICK_DOWN_SPEED > 0.0001):
-            self.BRICK_DOWN_SPEED /= 3
-        self.round += 1
-        self.score_dict["1"] = 40 * (self.round+1)
-        self.score_dict["2"] = 100 * (self.round+1)
-        self.score_dict["3"] = 300 * (self.round+1)
-        self.score_dict["4"] = 1200 * (self.round+1)
+        if(self.BRICK_DOWN_SPEED > 0.00001):
+            self.BRICK_DOWN_SPEED /= 2
+            self.round += 1
+            self.score_dict["1"] = 40 * (self.round+1)
+            self.score_dict["2"] = 100 * (self.round+1)
+            self.score_dict["3"] = 300 * (self.round+1)
+            self.score_dict["4"] = 1200 * (self.round+1)
     #---------------------------------------------------------------------------
     #? 判斷與設定要清除的方塊.
     # 傳出:
@@ -672,6 +755,7 @@ class Tetris:
     def nextRound(self):
         # GameOver.
         if (self.checkGameLogic()):
+            print(str(self.score))
             self.resetGame()
 
         # 複製方塊到容器內.
@@ -726,11 +810,38 @@ class Tetris:
         self.brick_state = 0
         self.score_max = 0 
         self.score = 0 
-        self.game_mode = 0
         self.transformToBricks()
         self.updateNextBricks()
     #-------------------------------------------------------------------------
-    #? 基因演算法的評分參數
-    
-    #-------------------------------------------------------------------------
-    
+    def random_board(self):
+        for x in range(10):
+            time = random.randint(1, 7)
+            for y in range(time):
+                self.bricks_array[x][19-y] = random.randint(1, 7)
+    def start_quiz(self):
+        self.brick_down_speed = 0.5
+        self.container_x = 3 
+        self.container_y = -4 
+        self.brick_id = random.randint( 1, 7)
+        self.brick_state = 0
+        self.score_max = 0 
+        self.score = 0 
+        self.random_board()
+        self.transformToBricks()
+        self.updateNextBricks()
+    def nextQuiz(self):
+        for x in range(10):
+            for y in range(20):
+                self.bricks_array[x][y] = 0
+        self.random_board()
+        # 複製方塊到容器內.
+        self.brick_down_speed = 0.5
+        self.container_x = 3 
+        self.container_y = -4 
+        self.brick_state = 0
+        self.brick_id = random.randint( 1, 7)
+        self.copyToBricksArray() 
+        self.random_board()
+        self.transformToBricks()
+        self.updateNextBricks()
+        
