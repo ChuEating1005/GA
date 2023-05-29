@@ -251,14 +251,15 @@ def fitness_func(x,solution, solution_idx):
         board = tuple()
         score = 0
         tmpblock = block.copy()
-        while (1):
+        cnt = 0
+        while (cnt < 2000):
             now = save(board, tmpblock, 0, solution, score)
             if now[1][0] == -1:
                 break
             board = now[0]
             score = now[1][1]
             tmpblock = now[2]
-
+            cnt += 1
         totalscore += score
     print(solution)
     print(totalscore)

@@ -54,9 +54,9 @@ class DQNAgent:
         self.model = self._build_model()
 
     def s(self):
-        self.model.save('mymodel.h5')
+        self.model.save('Tetris_model.h5')
     def l(self):
-        self.model = tf.contrib.keras.models.load_model('my_model.h5')
+        self.model = tf.contrib.keras.models.load_model('Tetris_model.h5')
     def _build_model(self):
         '''Builds a Keras deep neural network model'''
         model = Sequential()

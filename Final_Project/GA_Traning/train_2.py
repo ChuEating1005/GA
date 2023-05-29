@@ -258,13 +258,15 @@ def fitness_func(x,solution, solution_idx):
         board = tuple()
         score = 0
         tmpblock = block.copy()
-        while (1):
+        cnt = 0
+        while (cnt < 2000):
             now = save(board, tmpblock, 0, solution, score)
             if now[1][0] == -1:
                 break
             board = now[0]
             score = now[1][1]
             tmpblock = now[3]
+            cnt += 1
 
         totalscore += score
     print(solution)
@@ -273,10 +275,10 @@ def fitness_func(x,solution, solution_idx):
     return totalscore
 
 # 基因演算法執行
-ga_instance = pygad.GA(num_generations=100,
+ga_instance = pygad.GA(num_generations=50,
                        num_parents_mating=20,
                        fitness_func=fitness_func,
-                       sol_per_pop=100,
+                       sol_per_pop=20,
                        num_genes=6,
                        init_range_low=-5,
                        init_range_high=5,

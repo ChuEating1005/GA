@@ -2,12 +2,18 @@
 import os, sys, random
 import time
 import numpy as np
+import random
+from Tetris_dqnAgent import DQNAgent
+from Tetris_logs import CustomTensorBoard
+from datetime import datetime
+from statistics import mean, median
+from tqdm import tqdm
 
 
 class Tetris:
     BRICK_DOWN_SPEED = 0.5 # 常數-磚塊正常下降速度.
     brick_down_speed = 0.5# 磚塊下降速度.
-    bricks_array = [] # 方塊陣列(10x20).
+    board = [] # 方塊陣列(10x20).
     bricks = [] # 方塊陣列(4x4).
     bricks_next = [] # 下一個方塊陣列(4x4).
     bricks_saved = [] # 儲存的方塊陣列(4x4).
@@ -19,7 +25,7 @@ class Tetris:
         "40": (10,12,13,14), "41": ( 4, 8,12,13), "42": (8,  9, 10, 12), "43": (4,  5,  9, 13), # L2.
         "50": ( 9,12,13,14), "51": ( 4, 8, 9,12), "52": (8,  9, 10, 13), "53": (5,  8,  9, 13), # T.
         "60": ( 8, 9,12,13),    # O.
-        "70": (12,13,14,15), "71": ( 1, 5, 9,13)    #I.
+        "70": (12,13,14,15), "71": ( 0, 4, 8,12)    #I.
     }
     score_dict = {
         "1": 40, "2": 100, "3": 300, "4": 1200
@@ -27,7 +33,7 @@ class Tetris:
     def __init__(self):
         #? 初始化各種用到的陣列
         for i in range(10):
-            self.bricks_array.append([0]*20)
+            self.board.append([0]*20)
         for i in range(4):
             self.bricks.append([0]*4)
             self.bricks_next.append([0]*4)
@@ -49,7 +55,85 @@ class Tetris:
         self.debug_message = False # 除錯訊息.
         self.score_max = 0 # 最大連線數.
         self.score = 0 # 本場連線數.
-   
+        self.dqn_init()
+    def dqn_init(self):
+        episodes = 2000
+        max_steps = None
+        epsilon_stop_episode = 1500
+        mem_size = 20000
+        discount = 0.95
+        batch_size = 512
+        epochs = 1
+        render_every = 50
+        log_every = 50
+        replay_start_size = 2000
+        train_every = 1
+        n_neurons = [32, 32]
+        render_delay = None
+        activations = ['relu', 'relu', 'linear']
+
+        self.agent = DQNAgent(4,n_neurons=n_neurons, activations=activations,
+                     epsilon_stop_episode=epsilon_stop_episode, mem_size=mem_size,
+                     discount=discount, replay_start_size=replay_start_size)
+
+        self.agent.l()
+    def get_next_states(self):
+        '''Get all possible next states'''
+        states = {}
+        # For all rotations
+        if self.brick_id == 6: 
+            rotations = [0]
+        elif self.brick_id  == 1 or self.brick_id  == 2 or self.brick_id  == 7:
+            rotations = [0, 1]
+        else:
+            rotations = [0, 1, 2, 3]
+        for rotation in rotations:
+            piece = self.transformToBricks(self.brick_id, rotation)
+            min_x = 0
+            max_x = 0
+            for x in range(4):
+                for y in range(4):
+                    if(piece[x][y]!=0):
+                        max_x = max(x,max_x)
+            # For all positions
+            for x in range(min_x, 10 - max_x):
+                pos = [x, 0]
+
+                # Drop piece
+                while self.ifTouchBottom(piece, pos):
+                    pos[1] += 1
+                pos[1] -= 1
+
+                # Valid move
+                if pos[1] >= 0:
+                    board_temp = self.copy_to_board(piece, pos)
+                    states[(x, rotation)] = self.get_board_props(board_temp)
+                    
+        return states
+    def get_board_props(self, board):
+        '''Get properties of the board'''
+        board_set = self.transform_to_list(board)
+        move = self.deleteline(board_set)
+        ans = list(list(i) for i in move[1])
+        for i in move[0]:
+            for j in range(len(ans)):
+                if (ans[j][1] < i):
+                    ans[j][1] += 1
+        lines = len(move[0])
+        holes = self.holes(ans)
+        total_bumpiness = self.bumpiness(ans)
+        sum_height = self.height(ans)
+        return [lines, holes, total_bumpiness, sum_height]
+    def get_best_action(self):
+        next_state = self.get_next_states()
+        best_state = self.agent.best_state(next_state.values())
+        best_action = None
+        for action, state in next_state.items():
+            if state == best_state:
+                best_action = action
+                break
+        return best_action[0]-3,best_action[1]
+
 
     #-------------------------------------------------------------------------
     #? 函數:取得磚塊索引陣列.
@@ -70,15 +154,16 @@ class Tetris:
 
         test = 200-sum(h)
         return test
-    def bumpness(self, a): 
-        test = 0
+    def bumpiness(self, a): 
+        total_bumpiness = 0
         h = [19, 19, 19, 19, 19, 19, 19, 19, 19, 19]
         for i in a:
             if (i[1] < h[i[0]]):
                 h[i[0]] = i[1]
         for i in range(1,10):
-            test += abs(h[i]-h[i-1])
-        return test
+            total_bumpiness += abs(h[i]-h[i-1])
+        
+        return total_bumpiness
 
     # 最大高度
 
@@ -163,25 +248,25 @@ class Tetris:
                     ans[j][1] += 1
         l = self.column_row_transition_and_wells(ans)
         score = 0
-        score -= (9.348695305)*l[0]
-        score -= (3.217888287)*l[1]
+        score += (-9.348695305)*l[0]
+        score += (-3.217888287)*l[1]
         score += (-3.385597225)*l[2]
-        score -= (7.899265427)*self.holes(ans)
+        score += (-7.899265427)*self.holes(ans)
         score += 3.41812681*len(move1[0])
-        score -= (self.max_height(ans))*(4.500158825)
+        score += (self.max_height(ans))*(-4.500158825)
         return score
 
-    def transform_to_list(self):
+    def transform_to_list(self,board):
         board_list = list()
         for x in range(10):
             for y in range(20):
-                if(self.bricks_array[x][y]!=0):
+                if(board[x][y]!=0):
                     board_list.append((x,y))
         return board_list
     # 計算出最佳的版面，回傳動作至LabView
     def pythontakeall(self, block_type,x,block_state):
         set_board = set()
-        board = self.transform_to_list()
+        board = self.transform_to_list(self.board)
         for i in range(len(board)):
             set_board.add(tuple(board[i][0:2]))
         # 加入邊界
@@ -259,7 +344,7 @@ class Tetris:
             if index < 7:
                 return [max(totalscore), 0, index-3, rank]
             else:
-                return [max(totalscore), 1, index-7-4, rank]
+                return [max(totalscore), 1, index-7-3, rank]
         elif block_type == 1:
             score0 = [0, 0, 0, 0, 0, 0, 0, 0, 0] #10
             score1 = [0, 0, 0, 0, 0, 0, 0, 0] #11
@@ -593,20 +678,21 @@ class Tetris:
     # 傳入:
     #   brickId : 方塊編號(1~7).
     #   state   : 方塊狀態(0~3).
-    def transformToBricks(self):
+    def transformToBricks(self,id,state):
         # 清除方塊陣列.
-        for x in range(4):
-            for y in range(4):
-                self.bricks[x][y] = 0
+        block = []
+        for i in range(4):
+            block.append([0]*4)
             
         # 取得磚塊索引陣列.
-        p_brick = self.getBrickIndex(self.brick_id, self.brick_state)
+        p_brick = self.getBrickIndex(id, state)
        
         # 轉換方塊到方塊陣列.
         for i in range(4):        
             bx = int(p_brick[i] % 4)
             by = int(p_brick[i] / 4)
-            self.bricks[bx][by] = self.brick_id
+            block[bx][by] = id
+        return block
            
     #-------------------------------------------------------------------------
 
@@ -615,17 +701,17 @@ class Tetris:
     # 傳出:
     #   true    : 還沒
     #   false   : 碰到了
-    def ifTouchBottom(self):
+    def ifTouchBottom(self,block, pos):
         posX = 0
         posY = 0
         for x in range(4):
             for y in range(4):
-                if (self.bricks[x][y] != 0):
-                    posX = self.container_x + x
-                    posY = self.container_y + y
+                if (block[x][y] != 0):
+                    posX = pos[0] + x
+                    posY = pos[1] + y
                     if (posX >= 0 and posY >= 0):
                         try:
-                            if (self.bricks_array[posX][posY] != 0):
+                            if (self.board[posX][posY] != 0):
                                 return False
                         except:
                             return False
@@ -634,16 +720,24 @@ class Tetris:
 
     #-------------------------------------------------------------------------
     #? 複製方塊到容器內.
-    def copyToBricksArray(self):
+    def copy_to_board(self,block,pos):
         posX = 0
         posY = 0
+        board_temp = []
+        for i in range(10):
+            board_temp.append([0]*20)
+        for x in range(10):
+            for y in range(20):
+                if(self.board[x][y] != 0):
+                    board_temp[x][y] = self.board[x][y]
         for x in range(4):
             for y in range(4):
-                if (self.bricks[x][y] != 0):
-                    posX = self.container_x + x
-                    posY = self.container_y + y
+                if (block[x][y] != 0):
+                    posX = pos[0] + x
+                    posY = pos[1] + y
                     if (posX >= 0 and posY >= 0):
-                        self.bricks_array[posX][posY] = self.bricks[x][y]
+                            board_temp[posX][posY] = block[x][y]
+        return board_temp
     #-------------------------------------------------------------------------
         
     #-------------------------------------------------------------------------
@@ -654,7 +748,7 @@ class Tetris:
         # 清除磚塊陣列.
         for x in range(10):
             for y in range(20):
-                self.bricks_array[x][y] = 0
+                self.board[x][y] = 0
         # 清除方塊陣列.
         for x in range(4):
             for y in range(4):
@@ -686,12 +780,12 @@ class Tetris:
         lineNum = 0
         for y in range(20):
             for x in range(10):
-                if (self.bricks_array[x][y] > 0):
+                if (self.board[x][y] > 0):
                     pointNum = pointNum + 1
                 if (pointNum == 10):
                     for i in range(10):
                         lineNum = lineNum + 1
-                        self.bricks_array[i][y] = 9
+                        self.board[i][y] = 9
             pointNum = 0
         return lineNum
     #---------------------------------------------------------------------------
@@ -699,39 +793,13 @@ class Tetris:
     #-------------------------------------------------------------------------
     #? 更新下一個磚塊.
     def updateNextBricks(self):
-
-        # 清除方塊陣列.
-        for y in range(4):
-            for x in range(4):
-                self.bricks_next[x][y] = 0
-        
-        # 取得磚塊索引陣列.
-        pBrick = self.getBrickIndex(self.brick_next_id, 0)
-
-        # 轉換方塊到方塊陣列.
-        for i in range(4):
-            bx = int(pBrick[i] % 4)
-            by = int(pBrick[i] / 4)
-            self.bricks_next[bx][by] = self.brick_next_id
+        self.bricks_next = self.transformToBricks(self.brick_next_id,0)
     #-------------------------------------------------------------------------
 
     #-------------------------------------------------------------------------
     #? 更新下一個磚塊.
     def updatSavedBricks(self):
-
-        # 清除方塊陣列.
-        for y in range(4):
-            for x in range(4):
-                self.bricks_saved[x][y] = 0
-        
-        # 取得磚塊索引陣列.
-        pBrick = self.getBrickIndex(self.brick_saved_id, 0)
-
-        # 轉換方塊到方塊陣列.
-        for i in range(4):
-            bx = int(pBrick[i] % 4)
-            by = int(pBrick[i] / 4)
-            self.bricks_saved[bx][by] = self.brick_saved_id
+        self.bricks_saved = self.transformToBricks(self.brick_saved_id,0)
     #-------------------------------------------------------------------------
 
     #-------------------------------------------------------------------------
@@ -744,7 +812,7 @@ class Tetris:
         else:
             self.brick_id, self.brick_saved_id = self.brick_saved_id, self.brick_id
         self.brick_state = 0
-        self.transformToBricks()
+        self.bricks =  self.transformToBricks(self.brick_id, self.brick_state)
         self.container_x = 3
         self.container_y = -4
         self.updatSavedBricks()
@@ -760,7 +828,7 @@ class Tetris:
 
         # 複製方塊到容器內.
         self.container_y = self.container_y - 1
-        self.copyToBricksArray()  
+        self.board = self.copy_to_board(self.bricks, [self.container_x, self.container_y])  
         
         #------------------------------------------------    
         # 判斷與設定要清除的方塊.
@@ -777,7 +845,7 @@ class Tetris:
         # 現在出現方塊、初始方塊狀態.
         self.brick_id = self.brick_next_id
         self.brick_state = 0
-        self.transformToBricks()
+        self.bricks =  self.transformToBricks(self.brick_id, self.brick_state)
         self.brick_next_id = random.randint( 1, 7)
         self.updateNextBricks()   
     #-------------------------------------------------------------------------
@@ -791,13 +859,13 @@ class Tetris:
         for x in range(10):
             for i in range(19):
                 for y in range(20):
-                    if (self.bricks_array[x][y] == 9):
+                    if (self.board[x][y] == 9):
                         if (y > 0):
-                            temp = self.bricks_array[x][y - 1]
-                            self.bricks_array[x][y - 1] = self.bricks_array[x][y]
-                            self.bricks_array[x][y] = temp
+                            temp = self.board[x][y - 1]
+                            self.board[x][y - 1] = self.board[x][y]
+                            self.board[x][y] = temp
                             y = y - 1
-                self.bricks_array[x][0] = 0
+                self.board[x][0] = 0
     #-------------------------------------------------------------------------
     def checkGameLogic(self):
         if (self.container_y < 0): return True
@@ -810,14 +878,14 @@ class Tetris:
         self.brick_state = 0
         self.score_max = 0 
         self.score = 0 
-        self.transformToBricks()
+        self.bricks =  self.transformToBricks(self.brick_id, self.brick_state)
         self.updateNextBricks()
     #-------------------------------------------------------------------------
     def random_board(self):
         for x in range(10):
             time = random.randint(1, 7)
             for y in range(time):
-                self.bricks_array[x][19-y] = random.randint(1, 7)
+                self.board[x][19-y] = random.randint(1, 7)
     def start_quiz(self):
         self.brick_down_speed = 0.5
         self.container_x = 3 
@@ -827,12 +895,12 @@ class Tetris:
         self.score_max = 0 
         self.score = 0 
         self.random_board()
-        self.transformToBricks()
+        self.bricks =  self.transformToBricks(self.brick_id, self.brick_state)
         self.updateNextBricks()
     def nextQuiz(self):
         for x in range(10):
             for y in range(20):
-                self.bricks_array[x][y] = 0
+                self.board[x][y] = 0
         self.random_board()
         # 複製方塊到容器內.
         self.brick_down_speed = 0.5
@@ -840,8 +908,8 @@ class Tetris:
         self.container_y = -4 
         self.brick_state = 0
         self.brick_id = random.randint( 1, 7)
-        self.copyToBricksArray() 
+        self.board = self.copy_to_board(self.bricks,[self.container_x, self.container_y])  
         self.random_board()
-        self.transformToBricks()
+        self.bricks =  self.transformToBricks(self.brick_id, self.brick_state)
         self.updateNextBricks()
         
